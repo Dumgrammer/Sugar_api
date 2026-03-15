@@ -78,6 +78,7 @@ exports.loginAdmin = async (req: Request, res: Response) => {
             {
                 sub: admin._id.toString(),
                 email: admin.email,
+                role: 'admin',
             },
             jwtSecret,
             { expiresIn: '7d' }

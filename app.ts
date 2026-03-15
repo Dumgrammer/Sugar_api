@@ -3,9 +3,11 @@ import type { Request, Response } from 'express';
 const express = require('express');
 const app = express();
 const morgan = require('morgan');
+const path = require('path');
 const adminRouter = require('./routes/admin');
 const superAdminRouter = require('./routes/superAdmin');
 const menuRouter = require('./routes/menu');
+const paymentRouter = require('./routes/payment');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -30,6 +32,8 @@ mongoose
 // Middleware
 app.use(morgan('dev'));
 app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.get('/', (req: Request, res: Response) => {
     res.send('Sugar API is running');
@@ -37,6 +41,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use('/admins', adminRouter);
 app.use('/super-admins', superAdminRouter);
 app.use('/menus', menuRouter);
+app.use('/payments', paymentRouter);
 
 module.exports = app;
 

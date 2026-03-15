@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 
 const MenuModel = require('../models/Menu');
+const path = require('path');
 const {
     createMenuSchema,
     updateMenuSchema,
@@ -31,9 +32,69 @@ function getMenuAvailabilityNow(menu: any): boolean {
     return isWithinAvailabilityPeriod(startTime, endTime, getCurrentTimeString());
 }
 
+function toPublicUploadPath(filePath: string): string {
+    const appRoot = path.join(__dirname, '..');
+    const relativePath = path.relative(appRoot, filePath).replace(/\\/g, '/');
+    return `/${relativePath}`;
+}
+
+function toNumber(value: unknown): unknown {
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        return Number.isNaN(parsed) ? value : parsed;
+    }
+    return value;
+}
+
+function toBoolean(value: unknown): unknown {
+    if (typeof value === 'string') {
+        if (value.toLowerCase() === 'true') return true;
+        if (value.toLowerCase() === 'false') return false;
+    }
+    return value;
+}
+
+function normalizeAvailabilityTime(body: any): any {
+    if (body.availabilityTime && typeof body.availabilityTime === 'string') {
+        try {
+            body.availabilityTime = JSON.parse(body.availabilityTime);
+        } catch (error) {
+            // Keep original string so validation can fail with clear message.
+        }
+    }
+
+    // Supports multipart form fields from frontend.
+    if (!body.availabilityTime && body.availabilityMode) {
+        body.availabilityTime =
+            body.availabilityMode === 'period'
+                ? {
+                    mode: 'period',
+                    startTime: body.startTime,
+                    endTime: body.endTime,
+                }
+                : { mode: 'anytime' };
+    }
+
+    return body;
+}
+
+function normalizeMenuPayload(req: Request): any {
+    const requestWithFile = req as Request & { file?: { path?: string } };
+    const body = normalizeAvailabilityTime({ ...req.body });
+    body.price = toNumber(body.price);
+    body.stock = toNumber(body.stock);
+    body.available = toBoolean(body.available);
+
+    if (requestWithFile.file?.path) {
+        body.image = toPublicUploadPath(requestWithFile.file.path);
+    }
+
+    return body;
+}
+
 exports.createMenu = async (req: Request, res: Response) => {
     try {
-        const parsedBody = createMenuSchema.safeParse(req.body);
+        const parsedBody = createMenuSchema.safeParse(normalizeMenuPayload(req));
         if (!parsedBody.success) {
             return res.status(400).json({
                 message: 'Validation failed',
@@ -98,7 +159,7 @@ exports.getMenuById = async (req: Request, res: Response) => {
 
 exports.updateMenu = async (req: Request, res: Response) => {
     try {
-        const parsedBody = updateMenuSchema.safeParse(req.body);
+        const parsedBody = updateMenuSchema.safeParse(normalizeMenuPayload(req));
         if (!parsedBody.success) {
             return res.status(400).json({
                 message: 'Validation failed',
