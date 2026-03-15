@@ -1,0 +1,39 @@
+{
+  "name": "sugar_api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon --watch \"*.ts\" --exec \"node -r ts-node/register\" server.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dumgrammer/Sugar_api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Dumgrammer/Sugar_api/issues"
+  },
+  "homepage": "https://github.com/Dumgrammer/Sugar_api#readme",
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.3.0",
+    "morgan": "^1.10.1",
+    "nodemon": "^3.1.14",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
