@@ -20,20 +20,22 @@ const createMenuSchema = z.object({
     category: z.enum(['coffee', 'milk-tea', 'desserts', 'snacks']),
     image: z.string().trim().optional().default(''),
     available: z.boolean().optional().default(true),
-    stock: z.number().int().min(0, 'Stock cannot be negative').optional().default(0),
     availabilityTime: availabilityTimeSchema.optional().default({ mode: 'anytime' }),
 });
 
-const updateMenuSchema = createMenuSchema.partial();
-
-const updateMenuStockSchema = z.object({
-    quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+const updateMenuSchema = z.object({
+    name: z.string().trim().min(1, 'Product name is required').optional(),
+    description: z.string().trim().min(1, 'Description is required').optional(),
+    price: z.number().min(0, 'Price cannot be negative').optional(),
+    category: z.enum(['coffee', 'milk-tea', 'desserts', 'snacks']).optional(),
+    image: z.string().trim().optional(),
+    available: z.boolean().optional(),
+    availabilityTime: availabilityTimeSchema.optional(),
 });
 
 module.exports = {
     createMenuSchema,
     updateMenuSchema,
-    updateMenuStockSchema,
 };
 
 export {};

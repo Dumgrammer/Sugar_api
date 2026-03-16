@@ -120,7 +120,6 @@ async function seedMenus(): Promise<void> {
                 existing.price = config.price;
                 existing.image = imagePublicPath;
                 existing.available = true;
-                existing.stock = existing.stock > 0 ? existing.stock : 20;
                 existing.availabilityTime = { mode: 'anytime', startTime: null, endTime: null };
                 await existing.save();
                 updated += 1;
@@ -134,7 +133,6 @@ async function seedMenus(): Promise<void> {
                 category: config.category,
                 image: imagePublicPath,
                 available: true,
-                stock: 20,
                 availabilityTime: { mode: 'anytime', startTime: null, endTime: null },
             });
             inserted += 1;

@@ -5,7 +5,6 @@ const path = require('path');
 const {
     createMenuSchema,
     updateMenuSchema,
-    updateMenuStockSchema,
 } = require('../schemas/menuSchema');
 
 function getCurrentTimeString(): string {
@@ -82,7 +81,6 @@ function normalizeMenuPayload(req: Request): any {
     const requestWithFile = req as Request & { file?: { path?: string } };
     const body = normalizeAvailabilityTime({ ...req.body });
     body.price = toNumber(body.price);
-    body.stock = toNumber(body.stock);
     body.available = toBoolean(body.available);
 
     if (requestWithFile.file?.path) {
@@ -186,35 +184,6 @@ exports.updateMenu = async (req: Request, res: Response) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Failed to update menu item' });
-    }
-};
-
-exports.updateMenuStock = async (req: Request, res: Response) => {
-    try {
-        const parsedBody = updateMenuStockSchema.safeParse(req.body);
-        if (!parsedBody.success) {
-            return res.status(400).json({
-                message: 'Validation failed',
-                errors: parsedBody.error.flatten().fieldErrors,
-            });
-        }
-
-        const { quantity } = parsedBody.data;
-        const menu = await MenuModel.findByIdAndUpdate(
-            req.params.id,
-            { $inc: { stock: quantity } },
-            { new: true }
-        );
-        if (!menu) {
-            return res.status(404).json({ message: 'Menu item not found' });
-        }
-
-        return res.status(200).json({
-            message: 'Stock updated successfully',
-            menu,
-        });
-    } catch (error) {
-        return res.status(500).json({ message: 'Failed to update stock' });
     }
 };
 

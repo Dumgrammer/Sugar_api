@@ -8,6 +8,8 @@ const adminRouter = require('./routes/admin');
 const superAdminRouter = require('./routes/superAdmin');
 const menuRouter = require('./routes/menu');
 const paymentRouter = require('./routes/payment');
+const analyticsRouter = require('./routes/analytics');
+const orderRouter = require('./routes/order');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -42,6 +44,8 @@ app.use('/admins', adminRouter);
 app.use('/super-admins', superAdminRouter);
 app.use('/menus', menuRouter);
 app.use('/payments', paymentRouter);
+app.use('/analytics', analyticsRouter);
+app.use('/orders', orderRouter);
 
 module.exports = app;
 

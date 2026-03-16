@@ -4,7 +4,6 @@ const {
     getMenus,
     getMenuById,
     updateMenu,
-    updateMenuStock,
     deleteMenu,
 } = require('../controllers/Menu');
 const { requireSuperAdmin, requireAdminOrSuperAdmin } = require('../middleware/requireSuperAdmin');
@@ -16,7 +15,6 @@ menuRouter.get('/', getMenus);
 menuRouter.get('/:id', getMenuById);
 menuRouter.post('/', requireAdminOrSuperAdmin, uploadMenuImage, createMenu);
 menuRouter.patch('/:id', requireAdminOrSuperAdmin, uploadMenuImage, updateMenu);
-menuRouter.patch('/:id/stock', requireAdminOrSuperAdmin, updateMenuStock);
 menuRouter.delete('/:id', requireSuperAdmin, deleteMenu);
 
 module.exports = menuRouter;

@@ -50,11 +50,6 @@ const menuSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
-        stock: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
         availabilityTime: {
             type: availabilityTimeSchema,
             default: { mode: 'anytime', startTime: null, endTime: null },
