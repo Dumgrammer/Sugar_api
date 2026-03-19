@@ -17,10 +17,12 @@ const cors = require('cors');
 dotenv.config();
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: [
+      'http://localhost:5173',
+      'https://project-sugar.vercel.app',
+    ],
     credentials: true,
-}));
-
+  }));
 
 
 mongoose
