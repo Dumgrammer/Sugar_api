@@ -199,3 +199,7 @@ gcloud run services update sugar-api --region asia-southeast1 --set-env-vars JWT
   - Usually MongoDB connectivity/whitelist/credential issue.
 - `Validation failed`
   - Check payload keys and enum values (status, category, paymentMethod).
+
+
+
+## Saturday Meeting
