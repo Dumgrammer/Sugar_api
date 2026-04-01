@@ -140,6 +140,50 @@ function percentageChange(current: number, previous: number): string {
     return `${rounded >= 0 ? '+' : ''}${rounded}%`;
 }
 
+function toBoolean(value: unknown): boolean {
+    return Boolean(value);
+}
+
+function buildDashboardAlerts(todayPayments: any[]): Array<{ level: 'info' | 'warning'; title: string; message: string }> {
+    const alerts: Array<{ level: 'info' | 'warning'; title: string; message: string }> = [];
+    const pendingConfirmations = todayPayments.filter((p: any) => !toBoolean(p?.paymentConfirmed)).length;
+    const inProgress = todayPayments.filter((p: any) => p?.status === 'received' || p?.status === 'preparing').length;
+    const completed = todayPayments.filter((p: any) => p?.status === 'completed').length;
+
+    if (todayPayments.length === 0) {
+        alerts.push({
+            level: 'info',
+            title: 'No Orders Yet',
+            message: 'No orders have been placed today.',
+        });
+        return alerts;
+    }
+
+    if (pendingConfirmations > 0) {
+        alerts.push({
+            level: 'warning',
+            title: 'Pending Payment Confirmation',
+            message: `${pendingConfirmations} order(s) still need payment confirmation.`,
+        });
+    }
+
+    if (inProgress > 0) {
+        alerts.push({
+            level: 'info',
+            title: 'Orders In Progress',
+            message: `${inProgress} order(s) are currently being prepared.`,
+        });
+    }
+
+    alerts.push({
+        level: 'info',
+        title: 'Completed Orders',
+        message: `${completed} order(s) completed today.`,
+    });
+
+    return alerts.slice(0, 4);
+}
+
 exports.getDashboardAnalytics = async (_req: Request, res: Response) => {
     try {
         const now = new Date();
@@ -158,6 +202,7 @@ exports.getDashboardAnalytics = async (_req: Request, res: Response) => {
         const topItems = aggregateTopItems(todayPayments, 5);
         const bestSeller = topItems[0]?.name ?? 'No sales yet';
         const hourlySales = buildDailySeries(todayPayments);
+        const alerts = buildDashboardAlerts(todayPayments);
 
         return res.status(200).json({
             message: 'Dashboard analytics fetched successfully',
@@ -172,6 +217,7 @@ exports.getDashboardAnalytics = async (_req: Request, res: Response) => {
                 },
                 hourlySales,
                 recentOrders: recentPayments,
+                alerts,
             },
         });
     } catch (error) {
@@ -302,45 +348,53 @@ function buildCsv(
     payments: any[],
 ): string {
     const lines: string[] = [];
+    const avgPerOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-    lines.push('Sugar Cafe Sales Report');
-    lines.push(`Period,${escapeCsv(rangeLabel)}`);
-    lines.push(`Generated,${formatCsvDate(now)}`);
-    lines.push(`Total Revenue,${totalRevenue}`);
-    lines.push(`Total Orders,${totalOrders}`);
-    lines.push(`Average per Order,${totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0}`);
+    lines.push('SUGAR CAFE SALES REPORT');
+    lines.push(`Report Period,${escapeCsv(rangeLabel.replace(/_/g, ' '))}`);
+    lines.push(`Generated At,${formatCsvDate(now)}`);
     lines.push('');
 
-    lines.push('Payment Methods');
-    lines.push('Method,Count,Percentage');
+    lines.push('SUMMARY');
+    lines.push('Metric,Value');
+    lines.push(`Total Revenue,${totalRevenue.toFixed(2)}`);
+    lines.push(`Total Orders,${totalOrders}`);
+    lines.push(`Average per Order,${avgPerOrder.toFixed(2)}`);
+    lines.push('');
+
+    lines.push('PAYMENT METHODS');
+    lines.push('Method,Order Count,Share (%)');
     for (const m of methodStats) {
-        lines.push(`${escapeCsv(m.name)},${m.count},${m.value}%`);
+        lines.push(`${escapeCsv(m.name)},${m.count},${m.value}`);
     }
     lines.push('');
 
-    lines.push('Top Selling Items');
+    lines.push('TOP SELLING ITEMS');
     lines.push('Item,Quantity Sold');
     for (const item of topItems) {
         lines.push(`${escapeCsv(item.name)},${item.sold}`);
     }
     lines.push('');
 
-    lines.push('Order Details');
-    lines.push('Date,Order Number,Customer,Payment Method,Amount,Items,Status,Payment Confirmed');
+    lines.push('ORDER DETAILS');
+    lines.push('Date,Order Number,Customer,Payment Method,Item Count,Amount,Status,Payment Confirmed');
+    let totalItemCount = 0;
     for (const p of payments) {
         const cart = Array.isArray(p.cart) ? p.cart : [];
-        const itemSummary = cart.map((i: any) => `${i.quantity}x ${i.name}`).join('; ');
+        const itemCount = cart.reduce((sum: number, i: any) => sum + toQuantity(i?.quantity), 0);
+        totalItemCount += itemCount;
         lines.push([
             formatCsvDate(new Date(p.createdAt)),
             escapeCsv(p.orderNumber || p._id.toString().slice(-8)),
             escapeCsv(p.customerName || ''),
             escapeCsv(p.paymentMethod || ''),
-            toAmount(p.amount),
-            escapeCsv(itemSummary),
+            itemCount,
+            toAmount(p.amount).toFixed(2),
             escapeCsv(p.status || ''),
             p.paymentConfirmed ? 'Yes' : 'No',
         ].join(','));
     }
+    lines.push(`TOTALS,,,,${totalItemCount},${totalRevenue.toFixed(2)},,`);
 
     return lines.join('\n');
 }
@@ -361,78 +415,111 @@ function buildPdf(
     const dark = '#1C1917';
     const muted = '#A8A29E';
 
-    doc.fontSize(22).fillColor(brown).text('Sugar Cafe', { continued: true });
-    doc.fillColor(dark).text(' Sales Report');
-    doc.moveDown(0.3);
-    doc.fontSize(9).fillColor(muted).text(`Period: ${rangeLabel.replace(/_/g, ' ')}  |  Generated: ${formatCsvDate(now)}`);
-    doc.moveDown(1);
+    const pageLeft = 40;
+    const pageRight = 555;
+    const tableWidth = pageRight - pageLeft;
+    const rowHeight = 18;
+    const detailHeaders = ['Date', 'Order #', 'Customer', 'Method', 'Items', 'Amount', 'Status', 'Confirmed'];
+    const detailColWidths = [70, 70, 90, 62, 42, 66, 70, 45];
+    const avgPerOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    let totalItems = 0;
 
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#E5E0DB').lineWidth(0.5).stroke();
+    doc.fontSize(20).fillColor(brown).text('Sugar Cafe', { continued: true });
+    doc.fillColor(dark).text(' Sales Report');
+    doc.moveDown(0.2);
+    doc.fontSize(9).fillColor(muted).text(`Period: ${rangeLabel.replace(/_/g, ' ')}`);
+    doc.text(`Generated: ${formatCsvDate(now)}`);
     doc.moveDown(0.8);
 
-    const avgPerOrder = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
-    doc.fontSize(10).fillColor(dark).text('Summary', { underline: true });
-    doc.moveDown(0.3);
-    doc.fontSize(9).fillColor(dark);
-    doc.text(`Total Revenue:  PHP ${totalRevenue.toLocaleString()}`);
-    doc.text(`Total Orders:  ${totalOrders}`);
-    doc.text(`Average per Order:  PHP ${avgPerOrder.toLocaleString()}`);
-    doc.moveDown(1);
+    doc.roundedRect(pageLeft, doc.y, tableWidth, 62, 6).fillAndStroke('#FAF7F3', '#E7DED6');
+    doc.fillColor(dark).fontSize(9);
+    doc.text(`Total Revenue: PHP ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageLeft + 10, doc.y + 10);
+    doc.text(`Total Orders: ${totalOrders}`, pageLeft + 10, doc.y + 26);
+    doc.text(`Average per Order: PHP ${avgPerOrder.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageLeft + 220, doc.y + 10);
+    doc.text(`Top Item Count: ${topItems.length}`, pageLeft + 220, doc.y + 26);
+    doc.moveDown(4.6);
 
-    doc.fontSize(10).fillColor(dark).text('Payment Methods', { underline: true });
-    doc.moveDown(0.3);
-    doc.fontSize(9).fillColor(dark);
+    doc.fontSize(10).fillColor(dark).text('Payment Method Summary', pageLeft, doc.y);
+    doc.moveDown(0.4);
     for (const m of methodStats) {
-        doc.text(`${m.name}:  ${m.count} orders (${m.value}%)`);
+        doc.fontSize(8.5).fillColor('#44403C').text(`- ${m.name}: ${m.count} orders (${m.value}%)`);
     }
-    doc.moveDown(1);
+    doc.moveDown(0.8);
 
     if (topItems.length > 0) {
-        doc.fontSize(10).fillColor(dark).text('Top Selling Items', { underline: true });
-        doc.moveDown(0.3);
-        doc.fontSize(9).fillColor(dark);
+        doc.fontSize(10).fillColor(dark).text('Top Selling Items', pageLeft, doc.y);
+        doc.moveDown(0.4);
         topItems.forEach((item, idx) => {
-            doc.text(`${idx + 1}. ${item.name}  —  ${item.sold} sold`);
+            doc.fontSize(8.5).fillColor('#44403C').text(`${idx + 1}. ${item.name} - ${item.sold} sold`);
         });
-        doc.moveDown(1);
+        doc.moveDown(0.8);
     }
 
-    doc.fontSize(10).fillColor(dark).text('Order Details', { underline: true });
+    const drawTableHeader = () => {
+        const y = doc.y;
+        doc.rect(pageLeft, y, tableWidth, rowHeight).fillAndStroke('#F5EFE8', '#E5DDD4');
+        let x = pageLeft;
+        doc.fontSize(7.5).fillColor('#5B4635');
+        detailHeaders.forEach((header, idx) => {
+            doc.text(header, x + 3, y + 5, { width: detailColWidths[idx] - 6, align: idx >= 4 ? 'right' : 'left' });
+            x += detailColWidths[idx];
+        });
+        doc.moveDown(1.2);
+    };
+
+    doc.fontSize(10).fillColor(dark).text('Order Details', pageLeft, doc.y);
     doc.moveDown(0.5);
+    drawTableHeader();
 
-    const colX = [40, 110, 200, 290, 345, 400, 475];
-    const headers = ['Date', 'Order #', 'Customer', 'Method', 'Amount', 'Status', 'Confirmed'];
-
-    doc.fontSize(7).fillColor(brown);
-    headers.forEach((h, i) => {
-        doc.text(h, colX[i], doc.y, { continued: i < headers.length - 1, width: (colX[i + 1] || 555) - colX[i] });
-    });
-    doc.text('');
-    doc.moveDown(0.2);
-    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#E5E0DB').lineWidth(0.3).stroke();
-    doc.moveDown(0.2);
-
-    doc.fontSize(7).fillColor(dark);
-    for (const p of payments) {
-        if (doc.y > 750) {
+    payments.forEach((p: any, idx: number) => {
+        if (doc.y > 740) {
             doc.addPage();
-            doc.fontSize(7).fillColor(dark);
+            drawTableHeader();
         }
 
-        const rowY = doc.y;
+        const y = doc.y;
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#FCFAF8';
+        doc.rect(pageLeft, y, tableWidth, rowHeight).fillAndStroke(bg, '#EEE8E2');
         const d = new Date(p.createdAt);
         const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const cart = Array.isArray(p.cart) ? p.cart : [];
+        const itemCount = cart.reduce((sum: number, i: any) => sum + toQuantity(i?.quantity), 0);
+        totalItems += itemCount;
 
-        doc.text(dateStr, colX[0], rowY, { width: colX[1] - colX[0] });
-        doc.text(p.orderNumber || p._id.toString().slice(-8), colX[1], rowY, { width: colX[2] - colX[1] });
-        doc.text((p.customerName || '').substring(0, 14), colX[2], rowY, { width: colX[3] - colX[2] });
-        doc.text(p.paymentMethod || '', colX[3], rowY, { width: colX[4] - colX[3] });
-        doc.text(`PHP ${toAmount(p.amount)}`, colX[4], rowY, { width: colX[5] - colX[4] });
-        doc.text(p.status || '', colX[5], rowY, { width: colX[6] - colX[5] });
-        doc.text(p.paymentConfirmed ? 'Yes' : 'No', colX[6], rowY, { width: 555 - colX[6] });
+        const rowValues = [
+            dateStr,
+            String(p.orderNumber || p._id.toString().slice(-8)),
+            String(p.customerName || '').slice(0, 22),
+            String(p.paymentMethod || ''),
+            String(itemCount),
+            `PHP ${toAmount(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            String(p.status || ''),
+            p.paymentConfirmed ? 'Yes' : 'No',
+        ];
 
-        doc.y = rowY + 12;
+        let x = pageLeft;
+        doc.fontSize(7.2).fillColor('#292524');
+        rowValues.forEach((value, colIdx) => {
+            doc.text(value, x + 3, y + 5, { width: detailColWidths[colIdx] - 6, align: colIdx >= 4 ? 'right' : 'left' });
+            x += detailColWidths[colIdx];
+        });
+
+        doc.moveDown(1.2);
+    });
+
+    if (doc.y > 740) {
+        doc.addPage();
     }
+    doc.moveDown(0.6);
+    doc.roundedRect(pageLeft, doc.y, tableWidth, 36, 5).fillAndStroke('#FAF7F3', '#E7DED6');
+    doc.fontSize(8.5).fillColor('#3F3A35');
+    doc.text(`Totals - Orders: ${totalOrders}`, pageLeft + 10, doc.y + 10);
+    doc.text(`Items: ${totalItems}`, pageLeft + 160, doc.y + 10);
+    doc.text(
+        `Revenue: PHP ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        pageLeft + 270,
+        doc.y + 10
+    );
 
     if (payments.length === 0) {
         doc.fontSize(9).fillColor(muted).text('No orders in this period.');
@@ -472,7 +559,7 @@ exports.exportAnalytics = async (req: Request, res: Response) => {
             return;
         }
 
-        const csv = buildCsv(rangeLabel, now, totalRevenue, totalOrders, methodStats, topItems, payments);
+        const csv = `\uFEFF${buildCsv(rangeLabel, now, totalRevenue, totalOrders, methodStats, topItems, payments)}`;
         const filename = `sugar_cafe_report_${rangeLabel}.csv`;
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
