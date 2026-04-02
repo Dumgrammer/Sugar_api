@@ -41,10 +41,6 @@ function normalizePaymentPayload(req: Request): any {
 exports.createPayment = async (req: Request, res: Response) => {
     try {
         const requestWithFile = req as Request & { file?: { path?: string } };
-        if (!requestWithFile.file?.path) {
-            return res.status(400).json({ message: 'Payment proof image is required' });
-        }
-
         const parsedBody = createPaymentSchema.safeParse(normalizePaymentPayload(req));
         if (!parsedBody.success) {
             return res.status(400).json({
@@ -52,12 +48,16 @@ exports.createPayment = async (req: Request, res: Response) => {
                 errors: parsedBody.error.flatten().fieldErrors,
             });
         }
+        const requiresProofImage = parsedBody.data.paymentMethod !== 'Cash';
+        if (requiresProofImage && !requestWithFile.file?.path) {
+            return res.status(400).json({ message: 'Payment proof image is required' });
+        }
 
         const payment = new PaymentModel({
             ...parsedBody.data,
-            proofImage: toPublicUploadPath(requestWithFile.file.path),
+            proofImage: requestWithFile.file?.path ? toPublicUploadPath(requestWithFile.file.path) : '',
             status: 'received',
-            paymentConfirmed: false,
+            paymentConfirmed: parsedBody.data.paymentMethod === 'Cash',
         });
 
         await payment.save();

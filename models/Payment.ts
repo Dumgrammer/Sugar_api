@@ -6,6 +6,33 @@ const paymentItemSchema = new mongoose.Schema(
         name: { type: String, required: true, trim: true },
         quantity: { type: Number, required: true, min: 1 },
         price: { type: Number, required: true, min: 0 },
+        size: {
+            type: String,
+            enum: ['Medium', 'Large'],
+            default: null,
+        },
+        notes: {
+            type: String,
+            default: '',
+            trim: true,
+        },
+        addOns: {
+            type: [
+                new mongoose.Schema(
+                    {
+                        name: { type: String, required: true, trim: true },
+                        price: { type: Number, required: true, min: 0 },
+                    },
+                    { _id: false }
+                ),
+            ],
+            default: [],
+        },
+        lineTotal: {
+            type: Number,
+            min: 0,
+            default: null,
+        },
     },
     { _id: false }
 );
@@ -38,7 +65,7 @@ const paymentSchema = new mongoose.Schema(
         },
         proofImage: {
             type: String,
-            required: true,
+            default: '',
         },
         status: {
             type: String,

@@ -5,6 +5,13 @@ const paymentCartItemSchema = z.object({
     name: z.string().trim().min(1, 'Item name is required'),
     quantity: z.number().int().min(1, 'Quantity must be at least 1'),
     price: z.number().min(0, 'Price cannot be negative'),
+    size: z.enum(['Medium', 'Large']).optional(),
+    notes: z.string().trim().optional().default(''),
+    addOns: z.array(z.object({
+        name: z.string().trim().min(1, 'Add-on name is required'),
+        price: z.number().min(0, 'Add-on price cannot be negative'),
+    })).optional().default([]),
+    lineTotal: z.number().min(0, 'Line total cannot be negative').optional(),
 });
 
 const createPaymentSchema = z.object({
