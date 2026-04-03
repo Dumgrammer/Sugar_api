@@ -10,6 +10,7 @@ const menuRouter = require('./routes/menu');
 const paymentRouter = require('./routes/payment');
 const analyticsRouter = require('./routes/analytics');
 const orderRouter = require('./routes/order');
+const inventoryRouter = require('./routes/inventory');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -48,6 +49,7 @@ app.use('/menus', menuRouter);
 app.use('/payments', paymentRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/orders', orderRouter);
+app.use('/inventories', inventoryRouter);
 
 module.exports = app;
 
