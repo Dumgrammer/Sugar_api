@@ -5,6 +5,26 @@ const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const { createAdminSchema, loginAdminSchema } = require('../schemas/adminSchema');
 
+exports.getAdmins = async (_req: Request, res: Response) => {
+    try {
+        const admins = await AdminModel.find({}, 'f_name m_name l_name email').sort({ l_name: 1, f_name: 1 });
+
+        return res.status(200).json({
+            message: 'Admins fetched successfully',
+            admins: admins.map((admin: any) => ({
+                _id: admin._id,
+                f_name: admin.f_name,
+                m_name: admin.m_name,
+                l_name: admin.l_name,
+                email: admin.email,
+                totalSales: 0,
+            })),
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to fetch admins' });
+    }
+};
+
 exports.createAdmin = async (req: Request, res: Response) => {
     try {
         const parsedBody = createAdminSchema.safeParse(req.body);

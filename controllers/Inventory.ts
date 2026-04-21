@@ -63,6 +63,57 @@ exports.getInventoryItems = async (_req: Request, res: Response) => {
     }
 };
 
+exports.exportInventoryItems = async (_req: Request, res: Response) => {
+    try {
+        const inventories = await InventoryModel.find().sort({ category: 1, itemName: 1 });
+
+        const escapeCsv = (value: string): string => {
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                return `"${value.replace(/"/g, '""')}"`;
+            }
+            return value;
+        };
+
+        const rows: string[] = [];
+        rows.push('SKU Code,Item Name,Category,Unit,Stock Quantity,Reorder Level,Unit Cost,Stock Value');
+
+        inventories.forEach((item: any) => {
+            const skuCode = String(item.skuCode ?? '');
+            const itemName = String(item.itemName ?? '');
+            const category = String(item.category ?? '');
+            const unit = String(item.unit ?? '');
+            const stockQuantity = toNumber(item.stockQuantity);
+            const reorderLevel = toNumber(item.reorderLevel);
+            const unitCost = toNumber(item.unitCost);
+
+            const safeStock = typeof stockQuantity === 'number' ? stockQuantity : 0;
+            const safeReorder = typeof reorderLevel === 'number' ? reorderLevel : 0;
+            const safeCost = typeof unitCost === 'number' ? unitCost : 0;
+            const stockValue = safeStock * safeCost;
+
+            rows.push([
+                escapeCsv(skuCode),
+                escapeCsv(itemName),
+                escapeCsv(category),
+                escapeCsv(unit),
+                String(safeStock),
+                String(safeReorder),
+                safeCost.toFixed(2),
+                stockValue.toFixed(2),
+            ].join(','));
+        });
+
+        const csv = `\uFEFF${rows.join('\n')}`;
+        const filename = `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.status(200).send(csv);
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to export inventory items' });
+    }
+};
+
 exports.getInventoryItemById = async (req: Request, res: Response) => {
     try {
         const inventory = await InventoryModel.findById(req.params.id);

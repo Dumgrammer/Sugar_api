@@ -431,12 +431,26 @@ function buildPdf(
     doc.text(`Generated: ${formatCsvDate(now)}`);
     doc.moveDown(0.8);
 
-    doc.roundedRect(pageLeft, doc.y, tableWidth, 62, 6).fillAndStroke('#FAF7F3', '#E7DED6');
+    const summaryY = doc.y;
+    doc.roundedRect(pageLeft, summaryY, tableWidth, 62, 6).fillAndStroke('#FAF7F3', '#E7DED6');
     doc.fillColor(dark).fontSize(9);
-    doc.text(`Total Revenue: PHP ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageLeft + 10, doc.y + 10);
-    doc.text(`Total Orders: ${totalOrders}`, pageLeft + 10, doc.y + 26);
-    doc.text(`Average per Order: PHP ${avgPerOrder.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageLeft + 220, doc.y + 10);
-    doc.text(`Top Item Count: ${topItems.length}`, pageLeft + 220, doc.y + 26);
+    doc.text(
+        `Total Revenue: PHP ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        pageLeft + 10,
+        summaryY + 10
+    );
+    doc.text(`Total Orders: ${totalOrders}`, pageLeft + 10, summaryY + 26);
+    doc.text(
+        `Average per Order: PHP ${avgPerOrder.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        pageLeft + 270,
+        summaryY + 10,
+        { width: tableWidth - 280, align: 'right' }
+    );
+    doc.text(`Top Item Count: ${topItems.length}`, pageLeft + 270, summaryY + 26, {
+        width: tableWidth - 280,
+        align: 'right',
+    });
+    doc.y = summaryY + 62;
     doc.moveDown(4.6);
 
     doc.fontSize(10).fillColor(dark).text('Payment Method Summary', pageLeft, doc.y);
@@ -511,15 +525,18 @@ function buildPdf(
         doc.addPage();
     }
     doc.moveDown(0.6);
-    doc.roundedRect(pageLeft, doc.y, tableWidth, 36, 5).fillAndStroke('#FAF7F3', '#E7DED6');
+    const totalsY = doc.y;
+    doc.roundedRect(pageLeft, totalsY, tableWidth, 36, 5).fillAndStroke('#FAF7F3', '#E7DED6');
     doc.fontSize(8.5).fillColor('#3F3A35');
-    doc.text(`Totals - Orders: ${totalOrders}`, pageLeft + 10, doc.y + 10);
-    doc.text(`Items: ${totalItems}`, pageLeft + 160, doc.y + 10);
+    doc.text(`Totals - Orders: ${totalOrders}`, pageLeft + 10, totalsY + 10);
+    doc.text(`Items: ${totalItems}`, pageLeft + 160, totalsY + 10);
     doc.text(
         `Revenue: PHP ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         pageLeft + 270,
-        doc.y + 10
+        totalsY + 10,
+        { width: tableWidth - 280, align: 'right' }
     );
+    doc.y = totalsY + 36;
 
     if (payments.length === 0) {
         doc.fontSize(9).fillColor(muted).text('No orders in this period.');
