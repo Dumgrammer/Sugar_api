@@ -6,6 +6,7 @@ const {
     updateInventoryItem,
     deleteInventoryItem,
     exportInventoryItems,
+    getPublicAddOnInventory,
 } = require('../controllers/Inventory');
 const { requireSuperAdmin, requireAdminOrSuperAdmin } = require('../middleware/requireSuperAdmin');
 
@@ -13,6 +14,7 @@ const inventoryRouter = express.Router();
 
 inventoryRouter.get('/', requireAdminOrSuperAdmin, getInventoryItems);
 inventoryRouter.get('/export', requireAdminOrSuperAdmin, exportInventoryItems);
+inventoryRouter.get('/public/add-ons', getPublicAddOnInventory);
 inventoryRouter.get('/:id', requireAdminOrSuperAdmin, getInventoryItemById);
 inventoryRouter.post('/', requireAdminOrSuperAdmin, createInventoryItem);
 inventoryRouter.patch('/:id', requireAdminOrSuperAdmin, updateInventoryItem);
