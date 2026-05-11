@@ -3,6 +3,14 @@ import type { Request, Response } from 'express';
 const InventoryModel = require('../models/Inventory');
 const { createInventorySchema, updateInventorySchema } = require('../schemas/inventorySchema');
 
+const PUBLIC_ADD_ONS = [
+    { name: 'Extra Pearls', aliases: ['Extra Pearls', 'Pearls', 'Tapioca Pearls'] },
+    { name: 'Nata', aliases: ['Nata', 'Nata de Coco'] },
+    { name: 'Cream Puffs', aliases: ['Cream Puffs'] },
+    { name: 'Whipped Cream', aliases: ['Whipped Cream'] },
+];
+
+
 function toNumber(value: unknown): unknown {
     if (typeof value === 'string' && value.trim() !== '') {
         const parsed = Number(value);
@@ -127,6 +135,43 @@ exports.getInventoryItemById = async (req: Request, res: Response) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Failed to fetch inventory item' });
+    }
+};
+
+exports.getPublicAddOnInventory = async (_req: Request, res: Response) => {
+    try {
+        const inventories = await InventoryModel.find({
+            $or: PUBLIC_ADD_ONS.flatMap((addOn) =>
+                addOn.aliases.map((alias) => ({
+                    itemName: new RegExp(`^${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                }))
+            ),
+        })
+            .select('itemName stockQuantity updatedAt')
+            .sort({ itemName: 1 });
+
+        const inventoryByName = new Map<string, any>(
+            inventories.map((item: any) => [String(item.itemName ?? '').trim().toLowerCase(), item])
+        );
+
+        const addOns = PUBLIC_ADD_ONS.map((addOn) => {
+            const matchedInventory = addOn.aliases
+                .map((alias) => inventoryByName.get(alias.trim().toLowerCase()))
+                .find(Boolean);
+
+            return {
+                itemName: addOn.name,
+                stockQuantity: matchedInventory?.stockQuantity ?? 0,
+                updatedAt: matchedInventory?.updatedAt,
+            };
+        });
+
+        return res.status(200).json({
+            message: 'Add-on inventory fetched successfully',
+            addOns,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to fetch add-on inventory' });
     }
 };
 
