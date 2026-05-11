@@ -14,6 +14,7 @@ const inventoryRouter = express.Router();
 
 inventoryRouter.get('/', requireAdminOrSuperAdmin, getInventoryItems);
 inventoryRouter.get('/export', requireAdminOrSuperAdmin, exportInventoryItems);
+inventoryRouter.get('/public/add-ons', getPublicAddOnInventory);
 inventoryRouter.get('/:id', requireAdminOrSuperAdmin, getInventoryItemById);
 inventoryRouter.post('/', requireAdminOrSuperAdmin, createInventoryItem);
 inventoryRouter.get('/public/add-ons', getPublicAddOnInventory);

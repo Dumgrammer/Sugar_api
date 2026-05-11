@@ -71,6 +71,43 @@ exports.getInventoryItems = async (_req: Request, res: Response) => {
     }
 };
 
+exports.getPublicAddOnInventory = async (_req: Request, res: Response) => {
+    try {
+        const inventories = await InventoryModel.find({
+            $or: PUBLIC_ADD_ONS.flatMap((addOn) =>
+                addOn.aliases.map((alias) => ({
+                    itemName: new RegExp(`^${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                }))
+            ),
+        })
+            .select('itemName stockQuantity updatedAt')
+            .sort({ itemName: 1 });
+
+        const inventoryByName = new Map<string, any>(
+            inventories.map((item: any) => [String(item.itemName ?? '').trim().toLowerCase(), item])
+        );
+
+        const addOns = PUBLIC_ADD_ONS.map((addOn) => {
+            const matchedInventory = addOn.aliases
+                .map((alias) => inventoryByName.get(alias.trim().toLowerCase()))
+                .find(Boolean);
+
+            return {
+                itemName: addOn.name,
+                stockQuantity: matchedInventory?.stockQuantity ?? 0,
+                updatedAt: matchedInventory?.updatedAt,
+            };
+        });
+
+        return res.status(200).json({
+            message: 'Add-on inventory fetched successfully',
+            addOns,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Failed to fetch add-on inventory' });
+    }
+};
+
 exports.exportInventoryItems = async (_req: Request, res: Response) => {
     try {
         const inventories = await InventoryModel.find().sort({ category: 1, itemName: 1 });
