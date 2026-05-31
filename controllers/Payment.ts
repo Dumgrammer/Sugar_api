@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 const path = require('path');
 const PaymentModel = require('../models/Payment');
+const InventoryModel = require('../models/Inventory');
 const { createPaymentSchema, updatePaymentStatusSchema } = require('../schemas/paymentSchema');
 
 function toPublicUploadPath(filePath: string): string {
@@ -38,6 +39,64 @@ function normalizePaymentPayload(req: Request): any {
     return body;
 }
 
+const ADD_ON_ALIAS_GROUPS = [
+    { name: 'Extra Pearls', aliases: ['Extra Pearls', 'Pearls', 'Tapioca Pearls'] },
+    { name: 'Nata', aliases: ['Nata', 'Nata de Coco'] },
+    { name: 'Cream Puffs', aliases: ['Cream Puffs'] },
+    { name: 'Whipped Cream', aliases: ['Whipped Cream'] },
+];
+
+function normalizeName(value: string): string {
+    return value.trim().toLowerCase();
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function resolveAddOnAliases(addOnName: string): string[] {
+    const normalized = normalizeName(addOnName);
+    const match = ADD_ON_ALIAS_GROUPS.find((group) =>
+        group.aliases.some((alias) => normalizeName(alias) === normalized)
+            || normalizeName(group.name) === normalized
+    );
+    return match ? match.aliases : [addOnName];
+}
+
+async function decrementAddOnInventory(cart: Array<any>) {
+    const addOnCounts = new Map<string, { aliases: string[]; quantity: number }>();
+
+    for (const item of cart) {
+        const itemQuantity = Number(item?.quantity ?? 0);
+        if (!Number.isFinite(itemQuantity) || itemQuantity <= 0) continue;
+        const addOns = Array.isArray(item?.addOns) ? item.addOns : [];
+        for (const addOn of addOns) {
+            if (!addOn?.name) continue;
+            const aliases = resolveAddOnAliases(String(addOn.name));
+            const key = normalizeName(aliases[0] ?? String(addOn.name));
+            const existing = addOnCounts.get(key);
+            if (existing) {
+                existing.quantity += itemQuantity;
+            } else {
+                addOnCounts.set(key, { aliases, quantity: itemQuantity });
+            }
+        }
+    }
+
+    if (!addOnCounts.size) return;
+
+    for (const { aliases, quantity } of addOnCounts.values()) {
+        const aliasFilters = aliases.map((alias) => ({
+            itemName: new RegExp(`^${escapeRegExp(alias)}$`, 'i'),
+        }));
+
+        await InventoryModel.updateOne(
+            { $or: aliasFilters },
+            { $inc: { stockQuantity: -quantity } }
+        );
+    }
+}
+
 exports.createPayment = async (req: Request, res: Response) => {
     try {
         const requestWithFile = req as Request & { file?: { path?: string } };
@@ -61,6 +120,7 @@ exports.createPayment = async (req: Request, res: Response) => {
         });
 
         await payment.save();
+        await decrementAddOnInventory(parsedBody.data.cart);
         return res.status(201).json({
             message: 'Payment created successfully',
             payment,

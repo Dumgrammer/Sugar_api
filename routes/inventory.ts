@@ -17,7 +17,6 @@ inventoryRouter.get('/export', requireAdminOrSuperAdmin, exportInventoryItems);
 inventoryRouter.get('/public/add-ons', getPublicAddOnInventory);
 inventoryRouter.get('/:id', requireAdminOrSuperAdmin, getInventoryItemById);
 inventoryRouter.post('/', requireAdminOrSuperAdmin, createInventoryItem);
-inventoryRouter.get('/public/add-ons', getPublicAddOnInventory);
 inventoryRouter.patch('/:id', requireAdminOrSuperAdmin, updateInventoryItem);
 inventoryRouter.delete('/:id', requireSuperAdmin, deleteInventoryItem);
 
