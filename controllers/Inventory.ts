@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 
 const InventoryModel = require('../models/Inventory');
 const { createInventorySchema, updateInventorySchema } = require('../schemas/inventorySchema');
+const { recordAuditLog } = require('../services/audit-log');
 
 const PUBLIC_ADD_ONS = [
     { name: 'Extra Pearls', aliases: ['Extra Pearls', 'Pearls', 'Tapioca Pearls'] },
@@ -49,6 +50,20 @@ exports.createInventoryItem = async (req: Request, res: Response) => {
             skuCode: normalizedSku,
         });
         await inventory.save();
+
+        await recordAuditLog({
+            req,
+            category: 'inventory',
+            action: 'item_created',
+            summary: `Created inventory item ${inventory.itemName} (${inventory.skuCode})`,
+            entityType: 'Inventory',
+            entityId: inventory._id.toString(),
+            details: {
+                skuCode: inventory.skuCode,
+                itemName: inventory.itemName,
+                stockQuantity: inventory.stockQuantity,
+            },
+        });
 
         return res.status(201).json({
             message: 'Inventory item created successfully',
@@ -108,8 +123,10 @@ exports.getPublicAddOnInventory = async (_req: Request, res: Response) => {
     }
 };
 
-exports.exportInventoryItems = async (_req: Request, res: Response) => {
+exports.exportInventoryItems = async (req: Request, res: Response) => {
     try {
+        const { formatReportDateTime, formatReportDate } = require('../services/reportDateTime');
+        const { recordAuditLog } = require('../services/audit-log');
         const inventories = await InventoryModel.find().sort({ category: 1, itemName: 1 });
 
         const escapeCsv = (value: string): string => {
@@ -119,8 +136,12 @@ exports.exportInventoryItems = async (_req: Request, res: Response) => {
             return value;
         };
 
+        const now = new Date();
         const rows: string[] = [];
-        rows.push('SKU Code,Item Name,Category,Unit,Stock Quantity,Reorder Level,Unit Cost,Stock Value');
+        rows.push('SUGAR CAFE INVENTORY EXPORT');
+        rows.push(`Generated At,${formatReportDateTime(now)}`);
+        rows.push('');
+        rows.push('SKU Code,Item Name,Category,Unit,Stock Quantity,Reorder Level,Unit Cost,Stock Value,Status');
 
         inventories.forEach((item: any) => {
             const skuCode = String(item.skuCode ?? '');
@@ -135,6 +156,7 @@ exports.exportInventoryItems = async (_req: Request, res: Response) => {
             const safeReorder = typeof reorderLevel === 'number' ? reorderLevel : 0;
             const safeCost = typeof unitCost === 'number' ? unitCost : 0;
             const stockValue = safeStock * safeCost;
+            const status = safeStock === 0 ? 'Out of Stock' : safeStock <= safeReorder ? 'Low Stock' : 'Healthy';
 
             rows.push([
                 escapeCsv(skuCode),
@@ -145,11 +167,20 @@ exports.exportInventoryItems = async (_req: Request, res: Response) => {
                 String(safeReorder),
                 safeCost.toFixed(2),
                 stockValue.toFixed(2),
+                escapeCsv(status),
             ].join(','));
         });
 
         const csv = `\uFEFF${rows.join('\n')}`;
-        const filename = `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+        const filename = `inventory_${formatReportDate(now)}.csv`;
+
+        await recordAuditLog({
+            req,
+            category: 'report',
+            action: 'inventory_export',
+            summary: `Exported inventory CSV (${inventories.length} items)`,
+            details: { itemCount: inventories.length, format: 'csv' },
+        });
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -234,10 +265,35 @@ exports.updateInventoryItem = async (req: Request, res: Response) => {
             }
         }
 
+        const existingItem = await InventoryModel.findById(req.params.id);
+        if (!existingItem) {
+            return res.status(404).json({ message: 'Inventory item not found' });
+        }
+
         const inventory = await InventoryModel.findByIdAndUpdate(req.params.id, payload, { new: true });
         if (!inventory) {
             return res.status(404).json({ message: 'Inventory item not found' });
         }
+
+        const stockChanged = payload.stockQuantity !== undefined
+            && Number(payload.stockQuantity) !== Number(existingItem.stockQuantity);
+
+        await recordAuditLog({
+            req,
+            category: 'inventory',
+            action: stockChanged ? 'stock_updated' : 'item_updated',
+            summary: stockChanged
+                ? `Updated stock for ${inventory.itemName}: ${existingItem.stockQuantity} → ${inventory.stockQuantity}`
+                : `Updated inventory item ${inventory.itemName} (${inventory.skuCode})`,
+            entityType: 'Inventory',
+            entityId: inventory._id.toString(),
+            details: {
+                skuCode: inventory.skuCode,
+                previousStock: existingItem.stockQuantity,
+                newStock: inventory.stockQuantity,
+                changes: payload,
+            },
+        });
 
         return res.status(200).json({
             message: 'Inventory item updated successfully',
@@ -254,6 +310,16 @@ exports.deleteInventoryItem = async (req: Request, res: Response) => {
         if (!inventory) {
             return res.status(404).json({ message: 'Inventory item not found' });
         }
+
+        await recordAuditLog({
+            req,
+            category: 'inventory',
+            action: 'item_deleted',
+            summary: `Deleted inventory item ${inventory.itemName} (${inventory.skuCode})`,
+            entityType: 'Inventory',
+            entityId: inventory._id.toString(),
+            details: { skuCode: inventory.skuCode, itemName: inventory.itemName },
+        });
 
         return res.status(200).json({ message: 'Inventory item deleted successfully' });
     } catch (error) {

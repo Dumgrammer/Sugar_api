@@ -1,31 +1,37 @@
 import type { Request, Response } from 'express';
 
 const PaymentModel = require('../models/Payment');
+const {
+    formatReportDateTime,
+    formatReportDate,
+    parseManilaDateBoundary,
+    startOfDayManila,
+    endOfDayManila,
+    startOfWeekManila,
+    startOfMonthManila,
+    startOfYearManila,
+    getManilaHour,
+    getManilaWeekdayIndex,
+    getManilaDayOfMonth,
+    getReportTimezone,
+} = require('../services/reportDateTime');
 
 type Period = 'daily' | 'weekly' | 'monthly';
 
 function startOfDay(date: Date): Date {
-    const value = new Date(date);
-    value.setHours(0, 0, 0, 0);
-    return value;
+    return startOfDayManila(date);
 }
 
 function endOfDay(date: Date): Date {
-    const value = new Date(date);
-    value.setHours(23, 59, 59, 999);
-    return value;
+    return endOfDayManila(date);
 }
 
 function startOfWeek(date: Date): Date {
-    const value = startOfDay(date);
-    const day = value.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    value.setDate(value.getDate() + diff);
-    return value;
+    return startOfWeekManila(date);
 }
 
 function startOfMonth(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+    return startOfMonthManila(date);
 }
 
 function toAmount(value: unknown): number {
@@ -88,7 +94,7 @@ function buildDailySeries(payments: any[]) {
     for (const payment of payments) {
         const createdAt = new Date(payment?.createdAt);
         if (Number.isNaN(createdAt.getTime())) continue;
-        const hour = createdAt.getHours();
+        const hour = getManilaHour(createdAt);
         points[hour].sales += toAmount(payment?.amount);
     }
 
@@ -102,7 +108,7 @@ function buildWeeklySeries(payments: any[]) {
     for (const payment of payments) {
         const createdAt = new Date(payment?.createdAt);
         if (Number.isNaN(createdAt.getTime())) continue;
-        const jsDay = createdAt.getDay();
+        const jsDay = getManilaWeekdayIndex(createdAt);
         const index = jsDay === 0 ? 6 : jsDay - 1;
         totals[index].sales += toAmount(payment?.amount);
     }
@@ -122,7 +128,7 @@ function buildMonthlySeries(payments: any[]) {
     for (const payment of payments) {
         const createdAt = new Date(payment?.createdAt);
         if (Number.isNaN(createdAt.getTime())) continue;
-        const day = createdAt.getDate();
+        const day = getManilaDayOfMonth(createdAt);
         const weekIndex = Math.min(5, Math.ceil(day / 7));
         const key = `Week ${weekIndex}`;
         byWeek[key] += toAmount(payment?.amount);
@@ -207,6 +213,13 @@ exports.getDashboardAnalytics = async (_req: Request, res: Response) => {
         return res.status(200).json({
             message: 'Dashboard analytics fetched successfully',
             data: {
+                meta: {
+                    timezone: getReportTimezone(),
+                    generatedAt: new Date().toISOString(),
+                    periodStart: todayStart.toISOString(),
+                    periodEnd: todayEnd.toISOString(),
+                    periodLabel: `Today (${formatReportDate(now)})`,
+                },
                 summary: {
                     revenueToday,
                     ordersToday,
@@ -274,6 +287,17 @@ exports.getSalesAnalytics = async (req: Request, res: Response) => {
         return res.status(200).json({
             message: 'Sales analytics fetched successfully',
             data: {
+                meta: {
+                    timezone: getReportTimezone(),
+                    generatedAt: new Date().toISOString(),
+                    periodStart: currentStart.toISOString(),
+                    periodEnd: endOfDay(now).toISOString(),
+                    periodLabel: period === 'daily'
+                        ? `Today (${formatReportDate(now)})`
+                        : period === 'weekly'
+                            ? `This week (${formatReportDate(currentStart)} – ${formatReportDate(now)})`
+                            : `This month (${formatReportDate(currentStart).slice(0, 7)})`,
+                },
                 period,
                 summary: {
                     revenue,
@@ -293,11 +317,11 @@ exports.getSalesAnalytics = async (req: Request, res: Response) => {
 };
 
 function startOfYear(date: Date): Date {
-    return new Date(date.getFullYear(), 0, 1, 0, 0, 0, 0);
+    return startOfYearManila(date);
 }
 
 function formatCsvDate(date: Date): string {
-    return date.toISOString().replace('T', ' ').substring(0, 19);
+    return formatReportDateTime(date);
 }
 
 function escapeCsv(value: string): string {
@@ -318,18 +342,18 @@ function resolveRange(req: Request): { rangeStart: Date; rangeEnd: Date; rangeLa
     let rangeLabel: string;
 
     if (fromParam && toParam) {
-        rangeStart = startOfDay(new Date(fromParam));
-        rangeEnd = endOfDay(new Date(toParam));
+        rangeStart = parseManilaDateBoundary(fromParam, false);
+        rangeEnd = parseManilaDateBoundary(toParam, true);
         if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime())) {
             return null;
         }
         rangeLabel = `${fromParam}_to_${toParam}`;
     } else if (period === 'yearly') {
         rangeStart = startOfYear(now);
-        rangeLabel = `yearly_${now.getFullYear()}`;
+        rangeLabel = `yearly_${formatReportDate(now).slice(0, 4)}`;
     } else if (period === 'monthly') {
         rangeStart = startOfMonth(now);
-        rangeLabel = `monthly_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        rangeLabel = `monthly_${formatReportDate(now).slice(0, 7)}`;
     } else {
         rangeStart = startOfWeek(now);
         rangeLabel = 'weekly';
@@ -428,7 +452,7 @@ function buildPdf(
     doc.fillColor(dark).text(' Sales Report');
     doc.moveDown(0.2);
     doc.fontSize(9).fillColor(muted).text(`Period: ${rangeLabel.replace(/_/g, ' ')}`);
-    doc.text(`Generated: ${formatCsvDate(now)}`);
+    doc.text(`Generated: ${formatCsvDate(now)} (${getReportTimezone()})`);
     doc.moveDown(0.8);
 
     const summaryY = doc.y;
@@ -495,7 +519,7 @@ function buildPdf(
         const bg = idx % 2 === 0 ? '#FFFFFF' : '#FCFAF8';
         doc.rect(pageLeft, y, tableWidth, rowHeight).fillAndStroke(bg, '#EEE8E2');
         const d = new Date(p.createdAt);
-        const dateStr = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const dateStr = formatCsvDate(d);
         const cart = Array.isArray(p.cart) ? p.cart : [];
         const itemCount = cart.reduce((sum: number, i: any) => sum + toQuantity(i?.quantity), 0);
         totalItems += itemCount;
@@ -545,6 +569,8 @@ function buildPdf(
     doc.end();
     return doc;
 }
+
+exports.buildPdf = buildPdf;
 
 exports.exportAnalytics = async (req: Request, res: Response) => {
     try {

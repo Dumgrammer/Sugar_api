@@ -20,6 +20,27 @@ const availabilityTimeSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const menuRecipeItemSchema = new mongoose.Schema(
+    {
+        inventory: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Inventory',
+            required: true,
+        },
+        quantity: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+        size: {
+            type: String,
+            enum: ['Medium', 'Large', 'any'],
+            default: 'any',
+        },
+    },
+    { _id: false }
+);
+
 const menuSchema = new mongoose.Schema(
     {
         name: {
@@ -53,6 +74,10 @@ const menuSchema = new mongoose.Schema(
         availabilityTime: {
             type: availabilityTimeSchema,
             default: { mode: 'anytime', startTime: null, endTime: null },
+        },
+        recipe: {
+            type: [menuRecipeItemSchema],
+            default: [],
         },
     },
     { timestamps: true }

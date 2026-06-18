@@ -2,8 +2,9 @@ import type { Request, Response } from 'express';
 
 const path = require('path');
 const PaymentModel = require('../models/Payment');
-const InventoryModel = require('../models/Inventory');
 const { createPaymentSchema, updatePaymentStatusSchema } = require('../schemas/paymentSchema');
+const { deductInventoryForCart } = require('../services/inventory-deduction');
+const { recordAuditLog } = require('../services/audit-log');
 
 function toPublicUploadPath(filePath: string): string {
     const appRoot = path.join(__dirname, '..');
@@ -39,64 +40,6 @@ function normalizePaymentPayload(req: Request): any {
     return body;
 }
 
-const ADD_ON_ALIAS_GROUPS = [
-    { name: 'Extra Pearls', aliases: ['Extra Pearls', 'Pearls', 'Tapioca Pearls'] },
-    { name: 'Nata', aliases: ['Nata', 'Nata de Coco'] },
-    { name: 'Cream Puffs', aliases: ['Cream Puffs'] },
-    { name: 'Whipped Cream', aliases: ['Whipped Cream'] },
-];
-
-function normalizeName(value: string): string {
-    return value.trim().toLowerCase();
-}
-
-function escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function resolveAddOnAliases(addOnName: string): string[] {
-    const normalized = normalizeName(addOnName);
-    const match = ADD_ON_ALIAS_GROUPS.find((group) =>
-        group.aliases.some((alias) => normalizeName(alias) === normalized)
-            || normalizeName(group.name) === normalized
-    );
-    return match ? match.aliases : [addOnName];
-}
-
-async function decrementAddOnInventory(cart: Array<any>) {
-    const addOnCounts = new Map<string, { aliases: string[]; quantity: number }>();
-
-    for (const item of cart) {
-        const itemQuantity = Number(item?.quantity ?? 0);
-        if (!Number.isFinite(itemQuantity) || itemQuantity <= 0) continue;
-        const addOns = Array.isArray(item?.addOns) ? item.addOns : [];
-        for (const addOn of addOns) {
-            if (!addOn?.name) continue;
-            const aliases = resolveAddOnAliases(String(addOn.name));
-            const key = normalizeName(aliases[0] ?? String(addOn.name));
-            const existing = addOnCounts.get(key);
-            if (existing) {
-                existing.quantity += itemQuantity;
-            } else {
-                addOnCounts.set(key, { aliases, quantity: itemQuantity });
-            }
-        }
-    }
-
-    if (!addOnCounts.size) return;
-
-    for (const { aliases, quantity } of addOnCounts.values()) {
-        const aliasFilters = aliases.map((alias) => ({
-            itemName: new RegExp(`^${escapeRegExp(alias)}$`, 'i'),
-        }));
-
-        await InventoryModel.updateOne(
-            { $or: aliasFilters },
-            { $inc: { stockQuantity: -quantity } }
-        );
-    }
-}
-
 exports.createPayment = async (req: Request, res: Response) => {
     try {
         const requestWithFile = req as Request & { file?: { path?: string } };
@@ -120,12 +63,46 @@ exports.createPayment = async (req: Request, res: Response) => {
         });
 
         await payment.save();
-        await decrementAddOnInventory(parsedBody.data.cart);
+        await deductInventoryForCart(parsedBody.data.cart);
+
+        const cartItems = Array.isArray(parsedBody.data.cart) ? parsedBody.data.cart : [];
+        await recordAuditLog({
+            req,
+            category: 'transaction',
+            action: 'order_placed',
+            summary: `New order ${payment.orderNumber || payment._id} from ${parsedBody.data.customerName} — PHP ${parsedBody.data.amount}`,
+            actorName: parsedBody.data.customerName,
+            actorRole: 'customer',
+            entityType: 'Payment',
+            entityId: payment._id.toString(),
+            details: {
+                orderNumber: payment.orderNumber,
+                amount: parsedBody.data.amount,
+                paymentMethod: parsedBody.data.paymentMethod,
+                itemCount: cartItems.length,
+            },
+        });
+
+        await recordAuditLog({
+            req,
+            category: 'inventory',
+            action: 'stock_deducted',
+            summary: `Inventory deducted for order ${payment.orderNumber || payment._id}`,
+            actorRole: 'system',
+            entityType: 'Payment',
+            entityId: payment._id.toString(),
+            details: { orderNumber: payment.orderNumber, itemCount: cartItems.length },
+        });
+
         return res.status(201).json({
             message: 'Payment created successfully',
             payment,
         });
     } catch (error) {
+        const statusCode = (error as { statusCode?: number })?.statusCode;
+        if (statusCode === 409) {
+            return res.status(409).json({ message: (error as Error).message });
+        }
         return res.status(500).json({ message: 'Failed to create payment' });
     }
 };
@@ -178,6 +155,16 @@ exports.updatePaymentStatus = async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Payment not found' });
         }
 
+        await recordAuditLog({
+            req,
+            category: 'order',
+            action: 'status_updated',
+            summary: `Payment ${payment.orderNumber || payment._id} status → ${parsedBody.data.status}`,
+            entityType: 'Payment',
+            entityId: payment._id.toString(),
+            details: { status: parsedBody.data.status, orderNumber: payment.orderNumber },
+        });
+
         return res.status(200).json({
             message: 'Payment status updated successfully',
             payment,
@@ -198,6 +185,16 @@ exports.confirmPayment = async (req: Request, res: Response) => {
         if (!payment) {
             return res.status(404).json({ message: 'Payment not found' });
         }
+
+        await recordAuditLog({
+            req,
+            category: 'order',
+            action: 'payment_confirmed',
+            summary: `Payment confirmed for order ${payment.orderNumber || payment._id}`,
+            entityType: 'Payment',
+            entityId: payment._id.toString(),
+            details: { orderNumber: payment.orderNumber, amount: payment.amount },
+        });
 
         return res.status(200).json({
             message: 'Payment confirmed successfully',

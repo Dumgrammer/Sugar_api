@@ -6,7 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon --watch \"*.ts\" --exec \"node -r ts-node/register\" server.ts",
-    "seed:menu": "node -r ts-node/register seed/menuSeed.ts"
+    "seed:menu": "node -r ts-node/register seed/menuSeed.ts",
+    "seed:menu-recipes": "node -r ts-node/register seed/menuRecipeSeed.ts",
+    "test:payment-deduction": "node -r ts-node/register scripts/test-frontend-payment-deduction.ts",
+    "seed:sample-orders": "node -r ts-node/register scripts/seed-sample-orders.ts"
   },
   "repository": {
     "type": "git",

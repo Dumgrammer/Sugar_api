@@ -4,6 +4,7 @@ const AdminModel = require('../models/Admin');
 const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const { createAdminSchema, loginAdminSchema } = require('../schemas/adminSchema');
+const { recordAuditLog } = require('../services/audit-log');
 
 exports.getAdmins = async (_req: Request, res: Response) => {
     try {
@@ -24,6 +25,7 @@ exports.getAdmins = async (_req: Request, res: Response) => {
         return res.status(500).json({ message: 'Failed to fetch admins' });
     }
 };
+
 
 exports.createAdmin = async (req: Request, res: Response) => {
     try {
@@ -51,6 +53,19 @@ exports.createAdmin = async (req: Request, res: Response) => {
             password: hashedPassword,
         });
         await admin.save();
+
+        const actorName = [f_name, m_name, l_name].filter(Boolean).join(' ');
+        await recordAuditLog({
+            req,
+            category: 'user',
+            action: 'admin_created',
+            summary: `Created admin account for ${normalizedEmail}`,
+            actorRole: 'super_admin',
+            entityType: 'Admin',
+            entityId: admin._id.toString(),
+            details: { email: normalizedEmail, name: actorName },
+        });
+
         res.status(201).json({
             message: 'Admin created successfully',
             admin: {
@@ -81,11 +96,29 @@ exports.loginAdmin = async (req: Request, res: Response) => {
         const normalizedEmail = email.toLowerCase();
         const admin = await AdminModel.findOne({ email: normalizedEmail });
         if (!admin) {
+            await recordAuditLog({
+                req,
+                category: 'auth',
+                action: 'login_failed',
+                summary: `Failed admin login for ${normalizedEmail}`,
+                actorEmail: normalizedEmail,
+                actorRole: 'anonymous',
+                status: 'failure',
+            });
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
         const isPasswordValid = await argon2.verify(admin.password, password);
         if (!isPasswordValid) {
+            await recordAuditLog({
+                req,
+                category: 'auth',
+                action: 'login_failed',
+                summary: `Failed admin login for ${normalizedEmail}`,
+                actorEmail: normalizedEmail,
+                actorRole: 'anonymous',
+                status: 'failure',
+            });
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -103,6 +136,18 @@ exports.loginAdmin = async (req: Request, res: Response) => {
             jwtSecret,
             { expiresIn: '7d' }
         );
+
+        const actorName = [admin.f_name, admin.m_name, admin.l_name].filter(Boolean).join(' ');
+        await recordAuditLog({
+            req,
+            category: 'auth',
+            action: 'login',
+            summary: `Admin logged in: ${actorName || admin.email}`,
+            actorId: admin._id.toString(),
+            actorEmail: admin.email,
+            actorName,
+            actorRole: 'admin',
+        });
 
         res.status(200).json({
             message: 'Login successful',

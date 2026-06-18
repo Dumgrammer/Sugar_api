@@ -4,6 +4,7 @@ const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const SuperAdminModel = require('../models/SuperAdmin');
 const { createSuperAdminSchema, loginSuperAdminSchema } = require('../schemas/superAdminSchema');
+const { recordAuditLog } = require('../services/audit-log');
 
 exports.createSuperAdmin = async (req: Request, res: Response) => {
     try {
@@ -61,11 +62,29 @@ exports.loginSuperAdmin = async (req: Request, res: Response) => {
         const normalizedEmail = email.toLowerCase();
         const superAdmin = await SuperAdminModel.findOne({ email: normalizedEmail });
         if (!superAdmin) {
+            await recordAuditLog({
+                req,
+                category: 'auth',
+                action: 'login_failed',
+                summary: `Failed super admin login for ${normalizedEmail}`,
+                actorEmail: normalizedEmail,
+                actorRole: 'anonymous',
+                status: 'failure',
+            });
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
         const isPasswordValid = await argon2.verify(superAdmin.password, password);
         if (!isPasswordValid) {
+            await recordAuditLog({
+                req,
+                category: 'auth',
+                action: 'login_failed',
+                summary: `Failed super admin login for ${normalizedEmail}`,
+                actorEmail: normalizedEmail,
+                actorRole: 'anonymous',
+                status: 'failure',
+            });
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -83,6 +102,18 @@ exports.loginSuperAdmin = async (req: Request, res: Response) => {
             jwtSecret,
             { expiresIn: '7d' }
         );
+
+        const actorName = [superAdmin.f_name, superAdmin.m_name, superAdmin.l_name].filter(Boolean).join(' ');
+        await recordAuditLog({
+            req,
+            category: 'auth',
+            action: 'login',
+            summary: `Super admin logged in: ${actorName || superAdmin.email}`,
+            actorId: superAdmin._id.toString(),
+            actorEmail: superAdmin.email,
+            actorName,
+            actorRole: 'super_admin',
+        });
 
         return res.status(200).json({
             message: 'Login successful',

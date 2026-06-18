@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "nodejs-express-mongodb-backend-pattern": {
+      "source": "laskar-ksatria/building-observable-nodejs-api",
+      "sourceType": "github",
+      "skillPath": "nodejs-express-mongodb-backend-pattern/SKILL.md",
+      "computedHash": "9e39fecad71a119ee456e5e8e60fd28899c96a495b15a7a0fe5245194a97d8ca"
+    }
+  }
+}

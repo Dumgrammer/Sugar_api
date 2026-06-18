@@ -6,6 +6,7 @@ const {
     createMenuSchema,
     updateMenuSchema,
 } = require('../schemas/menuSchema');
+const { recordAuditLog } = require('../services/audit-log');
 
 function getCurrentTimeString(): string {
     const now = new Date();
@@ -83,6 +84,14 @@ function normalizeMenuPayload(req: Request): any {
     body.price = toNumber(body.price);
     body.available = toBoolean(body.available);
 
+    if (typeof body.recipe === 'string' && body.recipe.trim() !== '') {
+        try {
+            body.recipe = JSON.parse(body.recipe);
+        } catch (error) {
+            // Keep original string so validation can fail with clear message.
+        }
+    }
+
     if (requestWithFile.file?.path) {
         body.image = toPublicUploadPath(requestWithFile.file.path);
     }
@@ -110,6 +119,17 @@ exports.createMenu = async (req: Request, res: Response) => {
         });
 
         await menu.save();
+
+        await recordAuditLog({
+            req,
+            category: 'menu',
+            action: 'item_created',
+            summary: `Created menu item "${menu.name}"`,
+            entityType: 'Menu',
+            entityId: menu._id.toString(),
+            details: { name: menu.name, category: menu.category, price: menu.price },
+        });
+
         return res.status(201).json({
             message: 'Menu item created successfully',
             menu,
@@ -121,7 +141,9 @@ exports.createMenu = async (req: Request, res: Response) => {
 
 exports.getMenus = async (_req: Request, res: Response) => {
     try {
-        const menus = await MenuModel.find().sort({ createdAt: -1 });
+        const menus = await MenuModel.find()
+            .populate('recipe.inventory', 'skuCode itemName category unit')
+            .sort({ createdAt: -1 });
         const data = menus.map((menu: any) => ({
             ...menu.toObject(),
             isAvailableNow: getMenuAvailabilityNow(menu),
@@ -138,7 +160,8 @@ exports.getMenus = async (_req: Request, res: Response) => {
 
 exports.getMenuById = async (req: Request, res: Response) => {
     try {
-        const menu = await MenuModel.findById(req.params.id);
+        const menu = await MenuModel.findById(req.params.id)
+            .populate('recipe.inventory', 'skuCode itemName category unit');
         if (!menu) {
             return res.status(404).json({ message: 'Menu item not found' });
         }
@@ -170,10 +193,25 @@ exports.updateMenu = async (req: Request, res: Response) => {
             payload.availabilityTime = { mode: 'anytime', startTime: null, endTime: null };
         }
 
+        const existingMenu = await MenuModel.findById(req.params.id);
+        if (!existingMenu) {
+            return res.status(404).json({ message: 'Menu item not found' });
+        }
+
         const menu = await MenuModel.findByIdAndUpdate(req.params.id, payload, { new: true });
         if (!menu) {
             return res.status(404).json({ message: 'Menu item not found' });
         }
+
+        await recordAuditLog({
+            req,
+            category: 'menu',
+            action: 'item_updated',
+            summary: `Updated menu item "${menu.name}"`,
+            entityType: 'Menu',
+            entityId: menu._id.toString(),
+            details: { name: menu.name, previousName: existingMenu.name, changes: payload },
+        });
 
         return res.status(200).json({
             message: 'Menu item updated successfully',
@@ -193,6 +231,16 @@ exports.deleteMenu = async (req: Request, res: Response) => {
         if (!menu) {
             return res.status(404).json({ message: 'Menu item not found' });
         }
+
+        await recordAuditLog({
+            req,
+            category: 'menu',
+            action: 'item_deleted',
+            summary: `Deleted menu item "${menu.name}"`,
+            entityType: 'Menu',
+            entityId: menu._id.toString(),
+            details: { name: menu.name, category: menu.category },
+        });
 
         return res.status(200).json({ message: 'Menu item deleted successfully' });
     } catch (error) {

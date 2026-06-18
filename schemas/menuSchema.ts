@@ -13,6 +13,12 @@ const availabilityTimeSchema = z.discriminatedUnion('mode', [
     }),
 ]);
 
+const menuRecipeItemSchema = z.object({
+    inventory: z.string().trim().min(1, 'Inventory item is required'),
+    quantity: z.number().min(0, 'Quantity cannot be negative'),
+    size: z.enum(['Medium', 'Large', 'any']).optional().default('any'),
+});
+
 const createMenuSchema = z.object({
     name: z.string().trim().min(1, 'Product name is required'),
     description: z.string().trim().min(1, 'Description is required'),
@@ -21,6 +27,7 @@ const createMenuSchema = z.object({
     image: z.string().trim().optional().default(''),
     available: z.boolean().optional().default(true),
     availabilityTime: availabilityTimeSchema.optional().default({ mode: 'anytime' }),
+    recipe: z.array(menuRecipeItemSchema).optional().default([]),
 });
 
 const updateMenuSchema = z.object({
@@ -31,11 +38,13 @@ const updateMenuSchema = z.object({
     image: z.string().trim().optional(),
     available: z.boolean().optional(),
     availabilityTime: availabilityTimeSchema.optional(),
+    recipe: z.array(menuRecipeItemSchema).optional(),
 });
 
 module.exports = {
     createMenuSchema,
     updateMenuSchema,
+    menuRecipeItemSchema,
 };
 
 export {};

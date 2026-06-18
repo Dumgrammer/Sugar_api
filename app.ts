@@ -11,6 +11,8 @@ const paymentRouter = require('./routes/payment');
 const analyticsRouter = require('./routes/analytics');
 const orderRouter = require('./routes/order');
 const inventoryRouter = require('./routes/inventory');
+const reportsRouter = require('./routes/reports');
+const auditRouter = require('./routes/audit');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
@@ -50,6 +52,8 @@ app.use('/payments', paymentRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/orders', orderRouter);
 app.use('/inventories', inventoryRouter);
+app.use('/reports', reportsRouter);
+app.use('/audit-logs', auditRouter);
 
 module.exports = app;
 
