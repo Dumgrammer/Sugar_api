@@ -6,6 +6,7 @@ const createAdminSchema = z.object({
     l_name: z.string().trim().min(2, 'Last name is required'),
     email: z.string().trim().email('Invalid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters long'),
+    staffRole: z.enum(['cashier', 'barista']).default('cashier'),
 });
 
 const loginAdminSchema = z.object({

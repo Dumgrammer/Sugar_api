@@ -6,6 +6,7 @@ type JwtPayload = {
     sub: string;
     email: string;
     role?: string;
+    staffRole?: string;
 };
 
 function getBearerToken(req: Request): string | null {
@@ -40,6 +41,33 @@ exports.requireAdminOrSuperAdmin = (req: Request, res: Response, next: NextFunct
 
     // Backward compatibility: older admin tokens may not include role yet.
     if (!payload.role || payload.role === 'admin' || payload.role === 'super_admin') {
+        return next();
+    }
+
+    return res.status(403).json({ message: 'Insufficient role for this action' });
+};
+
+/** Reports, inventory, and audit — cashiers and super admins only (not baristas). */
+exports.requireCashierOrSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+    const token = getBearerToken(req);
+    if (!token) {
+        return res.status(401).json({ message: 'Authorization token is required' });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+        return res.status(401).json({ message: 'Invalid or expired token' });
+    }
+
+    if (payload.role === 'super_admin') {
+        return next();
+    }
+
+    if (payload.role === 'admin') {
+        const staffRole = payload.staffRole ?? 'cashier';
+        if (staffRole === 'barista') {
+            return res.status(403).json({ message: 'This area is restricted to cashiers and super admins' });
+        }
         return next();
     }
 

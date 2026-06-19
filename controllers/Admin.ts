@@ -8,7 +8,7 @@ const { recordAuditLog } = require('../services/audit-log');
 
 exports.getAdmins = async (_req: Request, res: Response) => {
     try {
-        const admins = await AdminModel.find({}, 'f_name m_name l_name email').sort({ l_name: 1, f_name: 1 });
+        const admins = await AdminModel.find({}, 'f_name m_name l_name email staffRole').sort({ l_name: 1, f_name: 1 });
 
         return res.status(200).json({
             message: 'Admins fetched successfully',
@@ -18,6 +18,7 @@ exports.getAdmins = async (_req: Request, res: Response) => {
                 m_name: admin.m_name,
                 l_name: admin.l_name,
                 email: admin.email,
+                staffRole: admin.staffRole ?? 'cashier',
                 totalSales: 0,
             })),
         });
@@ -37,7 +38,7 @@ exports.createAdmin = async (req: Request, res: Response) => {
             });
         }
 
-        const { f_name, m_name, l_name, email, password } = parsedBody.data;
+        const { f_name, m_name, l_name, email, password, staffRole } = parsedBody.data;
         const normalizedEmail = email.toLowerCase();
         const existingAdmin = await AdminModel.findOne({ email: normalizedEmail });
         if (existingAdmin) {
@@ -51,6 +52,7 @@ exports.createAdmin = async (req: Request, res: Response) => {
             l_name,
             email: normalizedEmail,
             password: hashedPassword,
+            staffRole: staffRole ?? 'cashier',
         });
         await admin.save();
 
@@ -63,7 +65,7 @@ exports.createAdmin = async (req: Request, res: Response) => {
             actorRole: 'super_admin',
             entityType: 'Admin',
             entityId: admin._id.toString(),
-            details: { email: normalizedEmail, name: actorName },
+            details: { email: normalizedEmail, name: actorName, staffRole: admin.staffRole },
         });
 
         res.status(201).json({
@@ -74,6 +76,7 @@ exports.createAdmin = async (req: Request, res: Response) => {
                 m_name: admin.m_name,
                 l_name: admin.l_name,
                 email: admin.email,
+                staffRole: admin.staffRole ?? 'cashier',
             },
         });
 
@@ -127,11 +130,13 @@ exports.loginAdmin = async (req: Request, res: Response) => {
             return res.status(500).json({ message: 'JWT secret is not configured' });
         }
 
+        const staffRole = admin.staffRole ?? 'cashier';
         const token = jwt.sign(
             {
                 sub: admin._id.toString(),
                 email: admin.email,
                 role: 'admin',
+                staffRole,
             },
             jwtSecret,
             { expiresIn: '7d' }
@@ -158,9 +163,12 @@ exports.loginAdmin = async (req: Request, res: Response) => {
                 m_name: admin.m_name,
                 l_name: admin.l_name,
                 email: admin.email,
+                staffRole,
             },
         });
     } catch (error) {
         res.status(500).json({ message: 'Failed to login admin' });
     }
-}
+};
+
+export {};

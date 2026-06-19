@@ -1,10 +1,10 @@
 const express = require('express');
-const { requireAdminOrSuperAdmin } = require('../middleware/requireSuperAdmin');
+const { requireSuperAdmin } = require('../middleware/requireSuperAdmin');
 const { exportReport } = require('../controllers/Reports');
 
 const reportsRouter = express.Router();
 
-reportsRouter.get('/export', requireAdminOrSuperAdmin, exportReport);
+reportsRouter.get('/export', requireSuperAdmin, exportReport);
 
 module.exports = reportsRouter;
 
