@@ -47,8 +47,8 @@ exports.requireAdminOrSuperAdmin = (req: Request, res: Response, next: NextFunct
     return res.status(403).json({ message: 'Insufficient role for this action' });
 };
 
-/** Reports, inventory, and audit — cashiers and super admins only (not baristas). */
-exports.requireCashierOrSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
+/** Reports, inventory, audit — store admins (staffRole admin) and super admins only. */
+exports.requirePrivilegedStaff = (req: Request, res: Response, next: NextFunction) => {
     const token = getBearerToken(req);
     if (!token) {
         return res.status(401).json({ message: 'Authorization token is required' });
@@ -63,16 +63,15 @@ exports.requireCashierOrSuperAdmin = (req: Request, res: Response, next: NextFun
         return next();
     }
 
-    if (payload.role === 'admin') {
-        const staffRole = payload.staffRole ?? 'cashier';
-        if (staffRole === 'barista') {
-            return res.status(403).json({ message: 'This area is restricted to cashiers and super admins' });
-        }
+    if (payload.role === 'admin' && payload.staffRole === 'admin') {
         return next();
     }
 
-    return res.status(403).json({ message: 'Insufficient role for this action' });
+    return res.status(403).json({ message: 'This area is restricted to store admins and super admins' });
 };
+
+/** @deprecated Use requirePrivilegedStaff */
+exports.requireCashierOrSuperAdmin = exports.requirePrivilegedStaff;
 
 exports.requireSuperAdmin = (req: Request, res: Response, next: NextFunction) => {
     const token = getBearerToken(req);

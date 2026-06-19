@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
 
 const path = require('path');
+const fs = require('fs');
 const PaymentModel = require('../models/Payment');
 const { createPaymentSchema, updatePaymentStatusSchema } = require('../schemas/paymentSchema');
-const { deductInventoryForCart } = require('../services/inventory-deduction');
+const { validateCartInventory, applyDeductions } = require('../services/inventory-deduction');
 const { recordAuditLog } = require('../services/audit-log');
 
 function toPublicUploadPath(filePath: string): string {
@@ -55,6 +56,20 @@ exports.createPayment = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Payment proof image is required' });
         }
 
+        let inventoryDeductions;
+        try {
+            inventoryDeductions = await validateCartInventory(parsedBody.data.cart);
+        } catch (error) {
+            if (requestWithFile.file?.path) {
+                fs.unlink(requestWithFile.file.path, () => undefined);
+            }
+            const statusCode = (error as { statusCode?: number })?.statusCode;
+            if (statusCode === 409) {
+                return res.status(409).json({ message: (error as Error).message });
+            }
+            throw error;
+        }
+
         const payment = new PaymentModel({
             ...parsedBody.data,
             proofImage: requestWithFile.file?.path ? toPublicUploadPath(requestWithFile.file.path) : '',
@@ -63,7 +78,7 @@ exports.createPayment = async (req: Request, res: Response) => {
         });
 
         await payment.save();
-        await deductInventoryForCart(parsedBody.data.cart);
+        await applyDeductions(inventoryDeductions);
 
         const cartItems = Array.isArray(parsedBody.data.cart) ? parsedBody.data.cart : [];
         await recordAuditLog({

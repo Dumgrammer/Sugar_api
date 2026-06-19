@@ -303,14 +303,20 @@ async function applyDeductions(deductions: Map<string, number>): Promise<void> {
     await Promise.all(updates);
 }
 
-async function deductInventoryForCart(cart: CartItem[]): Promise<void> {
+async function validateCartInventory(cart: CartItem[]): Promise<Map<string, number>> {
     const deductions = await buildCartDeductions(cart);
     await validateStock(deductions);
+    return deductions;
+}
+
+async function deductInventoryForCart(cart: CartItem[]): Promise<void> {
+    const deductions = await validateCartInventory(cart);
     await applyDeductions(deductions);
 }
 
 module.exports = {
     buildCartDeductions,
+    validateCartInventory,
     deductInventoryForCart,
     validateStock,
     applyDeductions,

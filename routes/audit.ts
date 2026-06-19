@@ -1,12 +1,12 @@
 const express = require('express');
-const { requireSuperAdmin } = require('../middleware/requireSuperAdmin');
+const { requirePrivilegedStaff } = require('../middleware/requireSuperAdmin');
 const { getAuditLogs, getAuditStats, exportAuditLogs } = require('../controllers/AuditLog');
 
 const auditRouter = express.Router();
 
-auditRouter.get('/', requireSuperAdmin, getAuditLogs);
-auditRouter.get('/stats', requireSuperAdmin, getAuditStats);
-auditRouter.get('/export', requireSuperAdmin, exportAuditLogs);
+auditRouter.get('/', requirePrivilegedStaff, getAuditLogs);
+auditRouter.get('/stats', requirePrivilegedStaff, getAuditStats);
+auditRouter.get('/export', requirePrivilegedStaff, exportAuditLogs);
 
 module.exports = auditRouter;
 
