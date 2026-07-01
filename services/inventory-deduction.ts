@@ -199,13 +199,16 @@ function applyAddOnDeductions(
 async function loadInventoryLookups(): Promise<{
     skuById: Map<string, string>;
     nameToId: Map<string, string>;
+    validInventoryIds: Set<string>;
 }> {
     const inventories = await InventoryModel.find().select('_id skuCode itemName').lean();
     const skuById = new Map<string, string>();
     const nameToId = new Map<string, string>();
+    const validInventoryIds = new Set<string>();
 
     for (const item of inventories as InventoryRecord[]) {
         const id = String(item._id);
+        validInventoryIds.add(id);
         if (item.skuCode) {
             skuById.set(String(item.skuCode).toUpperCase(), id);
         }
@@ -214,12 +217,19 @@ async function loadInventoryLookups(): Promise<{
         }
     }
 
-    return { skuById, nameToId };
+    return { skuById, nameToId, validInventoryIds };
+}
+
+function recipeHasValidInventory(
+    recipe: RecipeItem[],
+    validInventoryIds: Set<string>
+): boolean {
+    return recipe.every((item) => validInventoryIds.has(String(item.inventory)));
 }
 
 async function buildCartDeductions(cart: CartItem[]): Promise<Map<string, number>> {
     const deductions = new Map<string, number>();
-    const { skuById, nameToId } = await loadInventoryLookups();
+    const { skuById, nameToId, validInventoryIds } = await loadInventoryLookups();
 
     const menuIds = cart
         .map((item) => item.itemId)
@@ -239,7 +249,12 @@ async function buildCartDeductions(cart: CartItem[]): Promise<Map<string, number
         const menu = item.itemId ? menuById.get(String(item.itemId)) : undefined;
         const orderSize = item.size ?? null;
 
-        if (menu && Array.isArray(menu.recipe) && menu.recipe.length > 0) {
+        if (
+            menu
+            && Array.isArray(menu.recipe)
+            && menu.recipe.length > 0
+            && recipeHasValidInventory(menu.recipe, validInventoryIds)
+        ) {
             applyMenuRecipe(deductions, menu.recipe, orderSize, lineQuantity);
             continue;
         }
